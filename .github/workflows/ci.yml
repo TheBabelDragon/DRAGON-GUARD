@@ -1,0 +1,29 @@
+name: ci
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: PYTHONPATH=python python3 tests/test_nmap_parser.py
+      - name: server health
+        run: |
+          PYTHONPATH=python python3 -m dragon_guard.server &
+          sleep 1
+          curl -sf http://127.0.0.1:7700/api/health | grep dragon-guard
+          curl -sf -X POST http://127.0.0.1:7700/api/scope/check \
+            -H 'Content-Type: application/json' \
+            -d '{"target":"8.8.8.8"}' | grep '"allowed": false'
