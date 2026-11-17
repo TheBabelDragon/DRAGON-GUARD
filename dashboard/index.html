@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>DRAGON//GUARD</title>
+  <style>
+    :root { --bg:#0b1020; --card:#141a2e; --fg:#e8eefc; --muted:#8b9bb8; --ok:#3dcea8; --bad:#e85d75; --acc:#6aa8ff; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+    header { padding:1rem 1.5rem; border-bottom:1px solid #243049; display:flex; gap:1rem; align-items:center; }
+    header h1 { font-size:1.1rem; margin:0; letter-spacing:.04em; }
+    #health { font-size:.85rem; color:var(--muted); }
+    #health.ok { color:var(--ok); }
+    main { display:grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 56px); }
+    nav { border-right:1px solid #243049; padding:1rem; }
+    nav button { display:block; width:100%; text-align:left; background:transparent; border:0; color:var(--fg); padding:.55rem .7rem; border-radius:6px; cursor:pointer; margin-bottom:.25rem; }
+    nav button.active, nav button:hover { background:var(--card); }
+    section { padding:1.25rem 1.5rem; display:none; }
+    section.active { display:block; }
+    .card { background:var(--card); border-radius:10px; padding:1rem; margin-bottom:1rem; }
+    table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    th, td { text-align:left; padding:.45rem .4rem; border-bottom:1px solid #243049; }
+    input { width:100%; background:#0e1528; border:1px solid #2a3654; color:var(--fg); padding:.5rem; border-radius:6px; margin:.3rem 0 .7rem; }
+    button.primary { background:var(--acc); color:#041018; border:0; padding:.5rem .9rem; border-radius:6px; font-weight:600; cursor:pointer; }
+    .err { color:var(--bad); } .okmsg { color:var(--ok); }
+    code { background:#0e1528; padding:.1rem .3rem; border-radius:4px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>DRAGON//GUARD</h1>
+  <span id="health">connecting…</span>
+</header>
+<main>
+  <nav>
+    <button class="active" data-v="overview">Overview</button>
+    <button data-v="assets">Assets</button>
+    <button data-v="observations">Observations</button>
+    <button data-v="tools">Tools</button>
+    <button data-v="scope">Scope</button>
+    <button data-v="audit">Executions</button>
+  </nav>
+  <div>
+    <section id="overview" class="active">
+      <div class="card"><h2>Overview</h2>
+        <p>Security observation engine for DragonStack. Kali is optional.</p>
+        <ul>
+          <li>Assets: <strong id="c-assets">0</strong></li>
+          <li>Observations: <strong id="c-obs">0</strong></li>
+          <li>Executions: <strong id="c-exec">0</strong></li>
+        </ul>
+      </div>
+    </section>
+    <section id="assets">
+      <div class="card">
+        <h2>Register lab asset</h2>
+        <label>Asset ID</label><input id="a-id" value="lab-local" />
+        <label>Name</label><input id="a-name" value="Local lab host" />
+        <label>Address</label><input id="a-addr" value="127.0.0.1" />
+        <button class="primary" onclick="regAsset()">Register</button>
+        <p id="a-msg"></p>
+      </div>
+      <div class="card"><h2>Inventory</h2><table><thead><tr><th>ID</th><th>Name</th><th>Addresses</th><th>Auth</th></tr></thead><tbody id="a-tbl"></tbody></table></div>
+    </section>
+    <section id="observations">
+      <div class="card"><h2>Observations</h2><table><thead><tr><th>ID</th><th>Type</th><th>Target</th><th>Severity</th><th>Tool</th></tr></thead><tbody id="o-tbl"></tbody></table></div>
+    </section>
+    <section id="tools">
+      <div class="card"><h2>Tool detection</h2><pre id="tools-pre">…</pre>
+        <p>Run scoped Nmap: <code>PYTHONPATH=python python3 -m dragon_guard.adapters.nmap_adapter --target 127.0.0.1</code></p>
+      </div>
+    </section>
+    <section id="scope">
+      <div class="card"><h2>Scope check</h2>
+        <input id="s-target" value="8.8.8.8" />
+        <button class="primary" onclick="checkScope()">Check</button>
+        <p id="s-msg"></p>
+        <pre id="s-policy"></pre>
+      </div>
+    </section>
+    <section id="audit">
+      <div class="card"><h2>Execution history</h2><table><thead><tr><th>ID</th><th>Tool</th><th>Target</th><th>Status</th></tr></thead><tbody id="e-tbl"></tbody></table></div>
+    </section>
+  </div>
+</main>
+<script>
+const api = (p, opt) => fetch(p, opt).then(r => r.json().then(j => ({ok:r.ok, status:r.status, body:j})));
+async function refresh() {
+  try {
+    const h = await api('/api/health');
+    const el = document.getElementById('health');
+    if (h.ok) { el.textContent = `${h.body.service} ${h.body.version} · schema ${h.body.schema_version}`; el.className='ok'; }
+    const a = await api('/api/assets');
+    const o = await api('/api/observations');
+    const e = await api('/api/executions');
+    const t = await api('/api/tools');
+    const s = await api('/api/scope');
+    document.getElementById('c-assets').textContent = a.body.length;
+    document.getElementById('c-obs').textContent = o.body.length;
+    document.getElementById('c-exec').textContent = e.body.length;
+    document.getElementById('a-tbl').innerHTML = a.body.map(x => `<tr><td>${x.asset_id}</td><td>${x.name}</td><td>${(x.addresses||[]).join(', ')}</td><td>${x.authorized}</td></tr>`).join('');
+    document.getElementById('o-tbl').innerHTML = o.body.map(x => `<tr><td>${x.observation_id}</td><td>${x.observation_type}</td><td>${x.target}</td><td>${x.severity}</td><td>${x.source_tool}</td></tr>`).join('');
+    document.getElementById('e-tbl').innerHTML = e.body.map(x => `<tr><td>${x.execution_id||''}</td><td>${x.tool||''}</td><td>${x.target||''}</td><td>${x.status||''}</td></tr>`).join('');
+    document.getElementById('tools-pre').textContent = JSON.stringify(t.body, null, 2);
+    document.getElementById('s-policy').textContent = JSON.stringify(s.body, null, 2);
+  } catch (err) {
+    document.getElementById('health').textContent = 'backend offline';
+  }
+}
+async function regAsset() {
+  const r = await api('/api/assets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+    asset_id: document.getElementById('a-id').value,
+    name: document.getElementById('a-name').value,
+    addresses: [document.getElementById('a-addr').value],
+    authorized: true
+  })});
+  document.getElementById('a-msg').className = r.ok ? 'okmsg' : 'err';
+  document.getElementById('a-msg').textContent = r.ok ? 'registered' : (r.body.error || r.status);
+  refresh();
+}
+async function checkScope() {
+  const r = await api('/api/scope/check', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ target: document.getElementById('s-target').value })});
+  document.getElementById('s-msg').className = r.body.allowed ? 'okmsg' : 'err';
+  document.getElementById('s-msg').textContent = JSON.stringify(r.body);
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('section').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.getElementById(b.dataset.v).classList.add('active');
+});
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
