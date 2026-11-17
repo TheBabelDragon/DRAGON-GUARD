@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sT -Pn -T3 --top-ports 20 -oX - 127.0.0.1" start="0">
+  <host>
+    <address addr="127.0.0.1" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open" reason="syn-ack"/>
+        <service name="ssh" method="table"/>
+      </port>
+      <port protocol="tcp" portid="80">
+        <state state="closed" reason="conn-refused"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>
