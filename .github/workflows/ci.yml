@@ -1,0 +1,52 @@
+name: ci
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: PYTHONPATH=python python3 tests/test_nmap_parser.py
+      - run: PYTHONPATH=python python3 tests/test_api_regression.py
+      - name: server health and scope rejection
+        run: |
+          set -euo pipefail
+          PYTHONPATH=python python3 -m dragon_guard.server &
+          PID=$!
+          cleanup() { kill "$PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          ok=0
+          for i in $(seq 1 30); do
+            code=$(curl -sS -o /tmp/dg_health.json -w '%{http_code}' http://127.0.0.1:7700/api/health || true)
+            if [ "$code" = "200" ]; then
+              grep -q dragon-guard /tmp/dg_health.json
+              ok=1
+              break
+            fi
+            sleep 0.2
+          done
+          if [ "$ok" != "1" ]; then
+            echo "health endpoint did not become ready"
+            exit 1
+          fi
+
+          code=$(curl -sS -o /tmp/dg_scope.json -w '%{http_code}' \
+            -X POST http://127.0.0.1:7700/api/scope/check \
+            -H 'Content-Type: application/json' \
+            -d '{"target":"8.8.8.8"}')
+          echo "scope status=$code body=$(cat /tmp/dg_scope.json)"
+          test "$code" = "403"
+          grep -q '"allowed": false' /tmp/dg_scope.json
